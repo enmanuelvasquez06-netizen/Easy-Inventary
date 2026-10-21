@@ -1,0 +1,1021 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Control de Inventario</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: cabecera con pestañas tipo carpeta, contenido en una columna de ancho medio, tablas con números en monoespaciada */
+:root {
+  --bg: #f3f5f8;
+  --surface: #ffffff;
+  --surface-2: #eaeef4;
+  --fg: #16202e;
+  --muted: #5c6b80;
+  --line: #d5dce6;
+  --accent: #1f4fd6;
+  --accent-fg: #ffffff;
+  --ok: #0f7b3f;
+  --ok-bg: #dff3e6;
+  --bad: #b3261e;
+  --bad-bg: #fbe3e0;
+  --info: #1b5fd1;
+  --info-bg: #dce8fb;
+  --font-ui: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-num: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1520; --surface: #172030; --surface-2: #1f2a3d; --fg: #e6ecf5; --muted: #93a2b8;
+    --line: #2b3850; --accent: #6b92ff; --accent-fg: #0b1220;
+    --ok: #5fd68f; --ok-bg: #123524; --bad: #ff8a80; --bad-bg: #3d1a18; --info: #7fb0ff; --info-bg: #14284a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1520; --surface: #172030; --surface-2: #1f2a3d; --fg: #e6ecf5; --muted: #93a2b8;
+  --line: #2b3850; --accent: #6b92ff; --accent-fg: #0b1220;
+  --ok: #5fd68f; --ok-bg: #123524; --bad: #ff8a80; --bad-bg: #3d1a18; --info: #7fb0ff; --info-bg: #14284a;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-ui); font-size: 15px; line-height: 1.5;
+  padding-block: 20px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; }
+h1 { margin: 0; font-size: 1.6rem; font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }
+.sub { margin: 2px 0 0; color: var(--muted); font-size: 0.9rem; }
+.kpis { display: flex; gap: 8px; flex-wrap: wrap; }
+.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; min-width: 96px; }
+.kpi span { display: block; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.kpi b { font-family: var(--font-num); font-size: 1.05rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+nav[role="tablist"] { display: flex; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+nav button {
+  font: inherit; font-weight: 600; font-size: 0.92rem; color: var(--muted); background: transparent;
+  border: 0; border-bottom: 3px solid transparent; padding: 10px 14px; cursor: pointer; white-space: nowrap;
+}
+nav button:hover { color: var(--fg); }
+nav button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.panel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+h2 { margin: 0; font-size: 1.1rem; font-weight: 700; }
+.hint { margin: 0; color: var(--muted); font-size: 0.86rem; }
+
+.btn {
+  font: inherit; font-weight: 600; font-size: 0.9rem; border-radius: 7px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--fg); padding: 9px 14px; cursor: pointer;
+}
+.btn:hover { background: var(--surface-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn.sm { padding: 5px 10px; font-size: 0.8rem; }
+.btn.danger { color: var(--bad); border-color: var(--bad); background: transparent; }
+.btn.danger:hover { background: var(--bad-bg); }
+.btn.danger.solid { background: var(--bad); color: var(--surface); }
+td.act { text-align: right; white-space: nowrap; }
+.del-ask { font-size: 0.82rem; font-weight: 600; color: var(--bad); margin-right: 6px; }
+#save-state { color: var(--muted); }
+.check { flex-direction: row; align-items: center; gap: 8px; text-transform: none; letter-spacing: 0; font-size: 0.85rem; font-weight: 500; color: var(--fg); }
+.check input { width: auto; }
+.exp-row { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+.exp-row label { flex: 0 1 240px; }
+.banner { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; background: var(--info-bg); border-radius: 8px; padding: 10px 14px; }
+.banner p { margin: 0; flex: 1 1 260px; font-size: 0.9rem; }
+.danger-zone { border: 1px solid var(--bad); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.danger-zone p { margin: 0; }
+.reset-panel { display: flex; flex-direction: column; gap: 12px; background: var(--bad-bg); border-radius: 8px; padding: 14px; }
+.reset-panel > p { font-size: 0.9rem; }
+.hist { display: grid; grid-template-columns: minmax(200px, 270px) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 640px) { .hist { grid-template-columns: 1fr; } }
+.results .rec { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.results .rec b { font-family: var(--font-num); font-size: 0.92rem; font-weight: 600; }
+.today-tag { font-size: 0.7rem; font-weight: 600; color: var(--accent); margin-left: 6px; }
+.h-title { margin: 0; font-size: 1.05rem; font-weight: 700; text-transform: capitalize; }
+
+label { display: flex; flex-direction: column; gap: 4px; font-size: 0.78rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; min-width: 0; }
+input, select {
+  font: inherit; font-size: 0.95rem; color: var(--fg); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 7px; padding: 9px 10px; width: 100%; text-transform: none; letter-spacing: 0; font-weight: 400;
+}
+input[type="number"] { font-family: var(--font-num); }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; align-items: end; }
+.form-box { background: var(--surface-2); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.form-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.err { color: var(--bad); font-size: 0.85rem; margin: 0; min-height: 1.2em; }
+
+.tablebox { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+table { width: 100%; border-collapse: collapse; min-width: 560px; }
+th { text-align: left; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); background: var(--surface-2); padding: 9px 12px; white-space: nowrap; }
+td { padding: 10px 12px; border-top: 1px solid var(--line); vertical-align: middle; }
+td.num, th.num { text-align: right; }
+td.num, .mono { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+td.id { font-family: var(--font-num); color: var(--muted); font-size: 0.85rem; }
+.chip { display: inline-block; font-size: 0.75rem; font-weight: 600; background: var(--surface-2); border-radius: 99px; padding: 2px 10px; }
+.empty { padding: 22px; text-align: center; color: var(--muted); }
+
+.pick { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.results { max-height: 220px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; }
+.results button {
+  display: flex; width: 100%; justify-content: space-between; gap: 10px; align-items: center; text-align: left;
+  font: inherit; color: var(--fg); background: transparent; border: 0; border-top: 1px solid var(--line); padding: 9px 12px; cursor: pointer;
+}
+.results button:first-child { border-top: 0; }
+.results button:hover { background: var(--surface-2); }
+.results button[aria-pressed="true"] { background: var(--info-bg); }
+.results small { color: var(--muted); font-family: var(--font-num); white-space: nowrap; }
+.preview { display: flex; gap: 14px; flex-wrap: wrap; align-items: baseline; font-size: 0.92rem; color: var(--muted); }
+.preview b { font-family: var(--font-num); color: var(--fg); font-variant-numeric: tabular-nums; }
+.log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 0.88rem; }
+.log li { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px dashed var(--line); padding-bottom: 6px; }
+.log li span:last-child { font-family: var(--font-num); color: var(--ok); white-space: nowrap; }
+
+.count-in { width: 110px; text-align: right; }
+.diff { display: inline-block; min-width: 120px; text-align: center; font-weight: 600; font-size: 0.85rem; border-radius: 99px; padding: 3px 12px; font-family: var(--font-num); }
+.diff.none { color: var(--muted); background: transparent; font-weight: 400; }
+.diff.ok { color: var(--ok); background: var(--ok-bg); }
+.diff.bad { color: var(--bad); background: var(--bad-bg); }
+.diff.info { color: var(--info); background: var(--info-bg); }
+.confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; background: var(--info-bg); color: var(--fg); border-radius: 8px; padding: 12px 14px; }
+.confirm p { margin: 0; flex: 1 1 240px; }
+.audit-foot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
+.summary { display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.88rem; font-family: var(--font-num); }
+.summary .s-bad { color: var(--bad); } .summary .s-info { color: var(--info); } .summary .s-ok { color: var(--ok); }
+
+#toast {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-size: 0.9rem; font-weight: 500;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.25); max-width: calc(100% - 32px); z-index: 20;
+}
+@media (prefers-reduced-motion: no-preference) { #toast { animation: up 0.18s ease-out; } @keyframes up { from { opacity: 0; transform: translate(-50%, 8px); } } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Control de Inventario</h1>
+      <p class="sub">Existencias, entradas de mercancía y auditoría física. <span id="save-state"></span></p>
+    </div>
+    <div class="kpis" aria-label="Resumen">
+      <div class="kpi"><span>Productos</span><b id="k-prod">0</b></div>
+      <div class="kpi"><span>Unidades</span><b id="k-units">0</b></div>
+      <div class="kpi"><span>Valor</span><b id="k-val">$0</b></div>
+    </div>
+    <button class="btn sm" id="theme-btn" type="button" aria-label="Cambiar tema de color"></button>
+  </header>
+
+  <nav role="tablist" aria-label="Secciones">
+    <button role="tab" id="tab-inventario" aria-selected="true" aria-controls="p-inventario" data-tab="inventario">Inventario actual</button>
+    <button role="tab" id="tab-ingreso" aria-selected="false" aria-controls="p-ingreso" data-tab="ingreso">Mercancía nueva</button>
+    <button role="tab" id="tab-auditoria" aria-selected="false" aria-controls="p-auditoria" data-tab="auditoria">Conteo de auditoría</button>
+    <button role="tab" id="tab-historial" aria-selected="false" aria-controls="p-historial" data-tab="historial">Historial de conteos</button>
+  </nav>
+
+  <!-- 1. Inventario -->
+  <section class="panel" id="p-inventario" role="tabpanel" aria-labelledby="tab-inventario">
+    <div class="panel-head">
+      <h2>Base de datos de inventario</h2>
+      <button class="btn primary" id="btn-add" type="button">Agregar nuevo producto</button>
+    </div>
+    <form class="form-box" id="add-form" hidden>
+      <div class="form-grid">
+        <label for="n-name">Nombre del producto<input id="n-name" type="text" autocomplete="off" placeholder="Ej: Arroz blanco 1kg"></label>
+        <label for="n-cat">Categoría<input id="n-cat" type="text" list="cats" autocomplete="off" placeholder="Ej: Despensa"></label>
+        <label for="n-stock">Stock inicial<input id="n-stock" type="number" min="0" step="1" value="0"></label>
+        <label for="n-price">Precio ($)<input id="n-price" type="number" min="0" step="0.01" placeholder="0.00"></label>
+      </div>
+      <datalist id="cats"></datalist>
+      <p class="err" id="add-err" role="alert"></p>
+      <div class="form-actions">
+        <button class="btn primary" type="submit">Guardar producto</button>
+        <button class="btn" type="button" id="add-cancel">Cancelar</button>
+      </div>
+    </form>
+    <div class="tablebox">
+      <table>
+        <thead><tr><th>ID</th><th>Producto</th><th>Categoría</th><th class="num">Inventario teórico</th><th class="num">Precio</th><th class="num">Acciones</th></tr></thead>
+        <tbody id="inv-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 2. Mercancía nueva -->
+  <section class="panel" id="p-ingreso" role="tabpanel" aria-labelledby="tab-ingreso" hidden>
+    <div class="panel-head"><h2>Actualización por mercancía nueva</h2></div>
+    <p class="hint">Busca el producto, indica cuántas unidades llegaron y cárgalas al stock teórico.</p>
+    <div class="pick">
+      <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+        <label for="s-q">Buscar producto<input id="s-q" type="search" autocomplete="off" placeholder="Nombre, categoría o ID"></label>
+        <div class="results" id="s-results"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
+        <label for="s-qty">Cantidad que llega<input id="s-qty" type="number" min="1" step="1" placeholder="0"></label>
+        <div class="preview" id="s-preview">Selecciona un producto de la lista.</div>
+        <p class="err" id="s-err" role="alert"></p>
+        <div><button class="btn primary" id="s-load" type="button">Cargar al Stock</button></div>
+      </div>
+    </div>
+    <div>
+      <h2 style="font-size:0.95rem;margin-bottom:8px">Últimas entradas de mercancía</h2>
+      <ul class="log" id="s-log"><li><span style="color:var(--muted)">Aún no se han cargado entradas.</span><span></span></li></ul>
+    </div>
+  </section>
+
+  <!-- 3. Auditoría -->
+  <section class="panel" id="p-auditoria" role="tabpanel" aria-labelledby="tab-auditoria" hidden>
+    <div class="panel-head">
+      <h2>Conteo de auditoría</h2>
+      <button class="btn" id="a-clear" type="button">Limpiar conteos</button>
+    </div>
+    <p class="hint">Escribe el conteo físico real. La diferencia es conteo físico menos inventario teórico. Los productos sin conteo no se modifican.</p>
+    <div class="tablebox">
+      <table>
+        <thead><tr><th>ID</th><th>Producto</th><th class="num">Inventario teórico</th><th class="num">Conteo físico real</th><th>Diferencia</th></tr></thead>
+        <tbody id="aud-body"></tbody>
+      </table>
+    </div>
+    <div class="audit-foot">
+      <div class="summary" id="a-summary"></div>
+      <div class="form-actions">
+        <button class="btn" id="a-save" type="button">Guardar conteo del día</button>
+        <button class="btn primary" id="a-adjust" type="button">Ajustar inventario</button>
+      </div>
+    </div>
+    <div class="confirm" id="a-confirm" hidden>
+      <p id="a-confirm-msg"></p>
+      <label class="check" for="a-save-too"><input type="checkbox" id="a-save-too" checked> Guardar también el conteo de hoy en el historial</label>
+      <button class="btn primary" id="a-yes" type="button">Confirmar ajuste</button>
+      <button class="btn" id="a-no" type="button">Cancelar</button>
+    </div>
+  </section>
+
+  <!-- 4. Historial -->
+  <section class="panel" id="p-historial" role="tabpanel" aria-labelledby="tab-historial" hidden>
+    <div class="panel-head"><h2>Historial de conteos</h2></div>
+    <div class="banner" id="h-banner" hidden>
+      <p id="h-banner-msg"></p>
+      <button class="btn sm" id="h-banner-go" type="button">Ir al reinicio</button>
+    </div>
+    <div class="form-box" id="export-box">
+      <h2 style="font-size:0.95rem">Exportar reporte</h2>
+      <div class="exp-row">
+        <label for="x-period">Periodo
+          <select id="x-period">
+            <option value="hoy">Hoy</option>
+            <option value="semana">Últimos 7 días</option>
+            <option value="mes" selected>Este mes</option>
+            <option value="todo">Todo el historial</option>
+          </select>
+        </label>
+        <div class="form-actions">
+          <button class="btn" id="x-csv" type="button">CSV</button>
+          <button class="btn" id="x-xlsx" type="button">Excel</button>
+          <button class="btn primary" id="x-pdf" type="button">PDF</button>
+        </div>
+      </div>
+      <p class="hint" id="x-info"></p>
+      <p class="hint">El CSV incluye los conteos. Excel y PDF incluyen conteos, entradas de mercancía y el inventario actual.</p>
+    </div>
+    <p class="hint">Un registro por día. Elige una fecha para revisar lo que se contó, sin modificar el inventario actual.</p>
+    <div class="hist">
+      <div class="results" id="h-list" style="max-height:440px"></div>
+      <div id="h-detail" style="display:flex;flex-direction:column;gap:12px;min-width:0"></div>
+    </div>
+    <div class="danger-zone">
+      <div class="panel-head">
+        <h2 style="font-size:0.95rem">Reiniciar historial</h2>
+        <button class="btn danger sm" id="r-open" type="button">Reiniciar…</button>
+      </div>
+      <p class="hint" id="r-last"></p>
+      <div class="reset-panel" id="r-panel" hidden>
+        <p>Se borrarán <b id="r-count"></b>. Esta acción no se puede deshacer. Descarga el reporte antes de continuar.</p>
+        <p class="err" id="r-warn"></p>
+        <div><button class="btn" id="r-backup" type="button">Descargar respaldo completo en Excel</button></div>
+        <label class="check" for="r-prod"><input type="checkbox" id="r-prod"> Eliminar también todos los productos y su stock</label>
+        <label for="r-word">Para confirmar, escribe REINICIAR<input id="r-word" type="text" autocomplete="off" placeholder="REINICIAR"></label>
+        <div class="form-actions">
+          <button class="btn danger solid" id="r-go" type="button" disabled>Reiniciar ahora</button>
+          <button class="btn" id="r-cancel" type="button">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+<div id="toast" role="status" hidden></div>
+
+<script>
+(function () {
+  var state = {
+    products: [], loaded: false, deleting: null, lastReset: "",
+    counts: {}, selected: null, log: [], audits: [], histSel: null
+  };
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) { return String(s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
+  var money = function (n) { return "$" + n.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+  var int = function (n) { return n.toLocaleString("es-VE"); };
+  var byId = function (id) { return state.products.filter(function (p) { return p.id === id; })[0]; };
+
+  /* Guardado local: todo vive en el localStorage de este navegador. */
+  var LS_KEY = "inventario-app-v1";
+  var lsOk = true;
+  function saveLocal() {
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify({ v: 1, products: state.products, counts: state.counts, log: state.log, audits: state.audits, lastReset: state.lastReset }));
+      if (!lsOk) { lsOk = true; renderSaveState(); }
+    } catch (x) { if (lsOk) { lsOk = false; renderSaveState(); } }
+  }
+  function loadLocal() {
+    try {
+      var raw = localStorage.getItem(LS_KEY); if (!raw) return false;
+      var d = JSON.parse(raw);
+      if (!d || !Array.isArray(d.products)) return false;
+      state.products = d.products;
+      state.counts = d.counts && typeof d.counts === "object" ? d.counts : {};
+      state.log = Array.isArray(d.log) ? d.log : [];
+      state.audits = Array.isArray(d.audits) ? d.audits : [];
+      state.lastReset = typeof d.lastReset === "string" ? d.lastReset : "";
+      state.loaded = true;
+      return true;
+    } catch (x) { return false; }
+  }
+  function renderLog() {
+    $("s-log").innerHTML = state.log.length ? state.log.slice(0, 8).map(function (l) {
+      return "<li><span>" + esc(l.name) + ' <span style="color:var(--muted)">· ' + (l.date ? esc(l.date) + " " : "") + esc(l.time) + "</span></span><span>+" + int(l.qty) + "</span></li>";
+    }).join("") : '<li><span style="color:var(--muted)">Aún no se han cargado entradas.</span><span></span></li>';
+  }
+  function renderSaveState() {
+    $("save-state").textContent = lsOk ? "Los cambios se guardan automáticamente en este dispositivo."
+      : "Este navegador bloquea el guardado: los cambios se perderán al cerrar la página.";
+  }
+
+  /* Tema: automático (sigue al sistema), claro u oscuro */
+  var THEME_KEY = "inventario-tema";
+  var THEMES = ["auto", "light", "dark"];
+  var THEME_LABEL = { auto: "Tema: automático", light: "Tema: claro", dark: "Tema: oscuro" };
+  var hostTheme = document.documentElement.getAttribute("data-theme");
+  function getTheme() {
+    try { var t = localStorage.getItem(THEME_KEY); return THEMES.indexOf(t) >= 0 ? t : "auto"; } catch (x) { return "auto"; }
+  }
+  function applyTheme(t) {
+    var r = document.documentElement;
+    if (t === "auto") { if (hostTheme) r.setAttribute("data-theme", hostTheme); else r.removeAttribute("data-theme"); }
+    else r.setAttribute("data-theme", t);
+    $("theme-btn").textContent = THEME_LABEL[t];
+  }
+  $("theme-btn").addEventListener("click", function () {
+    var t = THEMES[(THEMES.indexOf(getTheme()) + 1) % THEMES.length];
+    try { localStorage.setItem(THEME_KEY, t); } catch (x) {}
+    applyTheme(t);
+  });
+
+  function refreshAll(noSave) {
+    if (state.selected && !byId(state.selected)) state.selected = null;
+    if (state.deleting && !byId(state.deleting)) state.deleting = null;
+    Object.keys(state.counts).forEach(function (id) { if (!byId(id)) delete state.counts[id]; });
+    renderInventory(); renderResults(); renderAudit();
+    if (!noSave) saveLocal();
+  }
+
+  /* Pestañas */
+  var tabs = ["inventario", "ingreso", "auditoria", "historial"];
+  function showTab(name) {
+    if (tabs.indexOf(name) < 0) name = "inventario";
+    tabs.forEach(function (t) {
+      var on = t === name;
+      $("tab-" + t).setAttribute("aria-selected", on ? "true" : "false");
+      $("p-" + t).hidden = !on;
+    });
+    if (name === "ingreso") renderResults();
+    if (name === "auditoria") renderAudit();
+    if (name === "historial") renderHistory();
+  }
+  document.querySelector("nav").addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-tab]"); if (!b) return;
+    showTab(b.getAttribute("data-tab"));
+    try { history.replaceState(null, "", "#" + b.getAttribute("data-tab")); } catch (x) {}
+  });
+
+  var toastT;
+  function toast(msg) {
+    var t = $("toast"); t.textContent = msg; t.hidden = false;
+    clearTimeout(toastT); toastT = setTimeout(function () { t.hidden = true; }, 2600);
+  }
+
+  /* Resumen y tabla 1 */
+  function renderKpis() {
+    var units = 0, val = 0;
+    state.products.forEach(function (p) { units += p.stock; val += p.stock * p.price; });
+    $("k-prod").textContent = state.products.length;
+    $("k-units").textContent = int(units);
+    $("k-val").textContent = money(val);
+  }
+  function renderInventory() {
+    $("inv-body").innerHTML = state.products.length ? state.products.map(function (p) {
+      var act = state.deleting === p.id
+        ? '<span class="del-ask">¿Eliminar?</span><button class="btn danger solid sm" type="button" data-act="yes" data-id="' + esc(p.id) + '">Sí, eliminar</button> ' +
+          '<button class="btn sm" type="button" data-act="no">Cancelar</button>'
+        : '<button class="btn danger sm" type="button" data-act="ask" data-id="' + esc(p.id) + '" aria-label="Eliminar ' + esc(p.name) + '">Eliminar</button>';
+      return '<tr><td class="id">' + esc(p.id) + "</td><td>" + esc(p.name) + '</td><td><span class="chip">' + esc(p.cat) +
+        '</span></td><td class="num">' + int(p.stock) + '</td><td class="num">' + money(p.price) + '</td><td class="act">' + act + "</td></tr>";
+    }).join("") : '<tr><td colspan="6" class="empty">' + (state.loaded
+      ? "No hay productos. Pulsa «Agregar nuevo producto» para crear el primero."
+      : "Cargando inventario…") + "</td></tr>";
+    var cats = {}; state.products.forEach(function (p) { cats[p.cat] = 1; });
+    $("cats").innerHTML = Object.keys(cats).map(function (c) { return '<option value="' + esc(c) + '">'; }).join("");
+    renderKpis();
+  }
+  $("btn-add").addEventListener("click", function () {
+    var f = $("add-form"); f.hidden = !f.hidden; if (!f.hidden) $("n-name").focus();
+  });
+  $("add-cancel").addEventListener("click", function () { $("add-form").hidden = true; $("add-err").textContent = ""; });
+  $("inv-body").addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-act]"); if (!b) return;
+    var act = b.getAttribute("data-act"), id = b.getAttribute("data-id");
+    if (act === "ask") { state.deleting = id; renderInventory(); return; }
+    if (act === "no") { state.deleting = null; renderInventory(); return; }
+    var p = byId(id); if (!p) return;
+    state.products = state.products.filter(function (x) { return x.id !== id; });
+    state.deleting = null; refreshAll(); toast(p.name + " eliminado");
+  });
+  $("add-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var name = $("n-name").value.trim(), cat = $("n-cat").value.trim() || "General";
+    var stock = parseInt($("n-stock").value, 10), price = parseFloat($("n-price").value);
+    var err = "";
+    if (!name) err = "Escribe el nombre del producto.";
+    else if (isNaN(stock) || stock < 0) err = "El stock inicial debe ser 0 o más.";
+    else if (isNaN(price) || price < 0) err = "Escribe un precio válido.";
+    else if (state.products.some(function (p) { return p.name.toLowerCase() === name.toLowerCase(); })) err = "Ya existe un producto con ese nombre.";
+    $("add-err").textContent = err; if (err) return;
+    var form = $("add-form");
+    var n = state.products.reduce(function (m, p) { return Math.max(m, p.n || 0); }, 0) + 1;
+    var id = "P-" + String(n).padStart(3, "0");
+    var np = { id: id, n: n, name: name, cat: cat, stock: stock, price: price };
+    state.products.push(np);
+    form.reset(); $("n-stock").value = 0; form.hidden = true;
+    refreshAll(); toast("Producto " + id + " agregado");
+  });
+
+  /* Mercancía nueva */
+  function renderResults() {
+    var q = $("s-q").value.trim().toLowerCase();
+    var list = state.products.filter(function (p) { return !q || (p.name + " " + p.cat + " " + p.id).toLowerCase().indexOf(q) >= 0; });
+    $("s-results").innerHTML = list.length ? list.map(function (p) {
+      return '<button type="button" data-id="' + p.id + '" aria-pressed="' + (state.selected === p.id) + '"><span>' + esc(p.name) +
+        "</span><small>" + esc(p.id) + " · " + int(p.stock) + " u.</small></button>";
+    }).join("") : '<div class="empty">' + (state.products.length ? "Sin resultados." : "Aún no hay productos. Agrégalos en «Inventario actual».") + "</div>";
+    renderPreview();
+  }
+  function renderPreview() {
+    var p = state.selected && byId(state.selected), q = parseInt($("s-qty").value, 10);
+    if (!p) { $("s-preview").textContent = "Selecciona un producto de la lista."; return; }
+    var add = isNaN(q) || q < 0 ? 0 : q;
+    $("s-preview").innerHTML = "<span>" + esc(p.name) + "</span><span>Actual <b>" + int(p.stock) + "</b></span><span>Nuevo <b>" + int(p.stock + add) + "</b></span>";
+  }
+  $("s-q").addEventListener("input", renderResults);
+  $("s-qty").addEventListener("input", renderPreview);
+  $("s-results").addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-id]"); if (!b) return;
+    state.selected = b.getAttribute("data-id"); $("s-err").textContent = ""; renderResults(); $("s-qty").focus();
+  });
+  $("s-load").addEventListener("click", function () {
+    var p = state.selected && byId(state.selected), q = parseInt($("s-qty").value, 10), err = "";
+    if (!p) err = "Elige un producto primero.";
+    else if (isNaN(q) || q < 1) err = "Escribe una cantidad mayor que 0.";
+    $("s-err").textContent = err; if (err) return;
+    p.stock += q;
+    state.log.unshift({ name: p.name, qty: q, d: todayKey(), date: shortDate(todayKey()), time: new Date().toLocaleTimeString("es-VE", { hour: "2-digit", minute: "2-digit" }) });
+    if (state.log.length > 2000) state.log.length = 2000;
+    renderLog(); saveLocal();
+    $("s-qty").value = ""; renderInventory(); renderResults(); renderAudit();
+    toast("+" + int(q) + " unidades a " + p.name);
+  });
+
+  /* Auditoría */
+  function diffInfo(p) {
+    var v = state.counts[p.id];
+    if (v === undefined || v === "") return { cls: "none", txt: "Sin contar", d: null };
+    var d = parseInt(v, 10) - p.stock;
+    if (d === 0) return { cls: "ok", txt: "Ok", d: 0 };
+    if (d < 0) return { cls: "bad", txt: d + " faltantes", d: d };
+    return { cls: "info", txt: "+" + d + " sobrantes", d: d };
+  }
+  function renderSummary() {
+    var ok = 0, bad = 0, info = 0, counted = 0;
+    state.products.forEach(function (p) {
+      var r = diffInfo(p); if (r.d === null) return; counted++;
+      if (r.d === 0) ok++; else if (r.d < 0) bad += -r.d; else info += r.d;
+    });
+    $("a-summary").innerHTML = "<span>Contados " + counted + "/" + state.products.length + '</span><span class="s-ok">Ok ' + ok +
+      '</span><span class="s-bad">Faltan ' + int(bad) + '</span><span class="s-info">Sobran ' + int(info) + "</span>";
+    $("a-adjust").disabled = counted === 0;
+    var hasToday = state.audits.some(function (r) { return r.date === todayKey(); });
+    $("a-save").disabled = counted === 0;
+    $("a-save").textContent = hasToday ? "Actualizar registro de hoy" : "Guardar conteo del día";
+  }
+  function renderAudit() {
+    $("aud-body").innerHTML = state.products.length ? state.products.map(function (p) {
+      var r = diffInfo(p), v = state.counts[p.id] === undefined ? "" : state.counts[p.id];
+      return '<tr><td class="id">' + esc(p.id) + "</td><td>" + esc(p.name) + '</td><td class="num">' + int(p.stock) +
+        '</td><td class="num"><input class="count-in" type="number" min="0" step="1" inputmode="numeric" data-id="' + p.id +
+        '" aria-label="Conteo físico real de ' + esc(p.name) + '" value="' + esc(v) + '" placeholder="—"></td><td><span class="diff ' + r.cls +
+        '" id="d-' + p.id + '">' + r.txt + "</span></td></tr>";
+    }).join("") : '<tr><td colspan="5" class="empty">No hay productos para auditar.</td></tr>';
+    renderSummary(); $("a-confirm").hidden = true;
+  }
+  $("aud-body").addEventListener("input", function (e) {
+    var el = e.target; if (!el.classList.contains("count-in")) return;
+    var id = el.getAttribute("data-id"), val = el.value.trim();
+    if (val === "" || isNaN(parseInt(val, 10)) || parseInt(val, 10) < 0) delete state.counts[id]; else state.counts[id] = String(parseInt(val, 10));
+    saveLocal();
+    var p = byId(id), r = diffInfo(p), d = $("d-" + id);
+    d.className = "diff " + r.cls; d.textContent = r.txt;
+    renderSummary(); $("a-confirm").hidden = true;
+  });
+  $("a-clear").addEventListener("click", function () { state.counts = {}; renderAudit(); saveLocal(); });
+
+  /* Registro diario de conteos */
+  function todayKey() {
+    var d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  function fmtDate(k) {
+    var p = k.split("-");
+    return new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString("es-VE", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  }
+  function shortDate(k) { var p = k.split("-"); return p[2] + "/" + p[1] + "/" + p[0]; }
+  function buildRecord() {
+    return {
+      date: todayKey(), savedAt: new Date().toISOString(),
+      items: state.products.map(function (p) {
+        var v = state.counts[p.id], c = v === undefined ? null : parseInt(v, 10);
+        return { id: p.id, name: p.name, cat: p.cat, price: p.price, theoretical: p.stock, counted: c, diff: c === null ? null : c - p.stock };
+      })
+    };
+  }
+  function saveAudit() {
+    var rec = buildRecord();
+    state.audits = [rec].concat(state.audits.filter(function (a) { return a.date !== rec.date; }))
+      .sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+    state.histSel = rec.date;
+    renderSummary(); renderHistory(); saveLocal();
+  }
+  $("a-save").addEventListener("click", function () {
+    var existed = state.audits.some(function (r) { return r.date === todayKey(); });
+    toast(existed ? "Registro de hoy actualizado" : "Conteo de hoy guardado en el historial");
+    saveAudit();
+  });
+  function recStats(rec) {
+    var s = { counted: 0, ok: 0, bad: 0, info: 0, lost: 0 };
+    rec.items.forEach(function (i) {
+      if (i.counted === null || i.counted === undefined) return;
+      s.counted++;
+      if (i.diff === 0) s.ok++;
+      else if (i.diff < 0) { s.bad += -i.diff; s.lost += -i.diff * (i.price || 0); }
+      else s.info += i.diff;
+    });
+    return s;
+  }
+  function diffCell(d) {
+    if (d === null || d === undefined) return '<span class="diff none">Sin contar</span>';
+    if (d === 0) return '<span class="diff ok">Ok</span>';
+    return d < 0 ? '<span class="diff bad">' + d + " faltantes</span>" : '<span class="diff info">+' + d + " sobrantes</span>";
+  }
+  function renderHistory() {
+    renderHistTools();
+    var list = state.audits;
+    if (!list.length) {
+      $("h-list").innerHTML = '<div class="empty">Aún no hay conteos guardados.</div>';
+      $("h-detail").innerHTML = '<p class="hint">Cuenta tus productos en «Conteo de auditoría» y pulsa «Guardar conteo del día». El registro aparecerá aquí.</p>';
+      return;
+    }
+    if (!state.histSel || !list.some(function (r) { return r.date === state.histSel; })) state.histSel = list[0].date;
+    $("h-list").innerHTML = list.map(function (r) {
+      var s = recStats(r);
+      return '<button type="button" data-date="' + esc(r.date) + '" aria-pressed="' + (r.date === state.histSel) + '"><span class="rec"><span><b>' +
+        shortDate(r.date) + "</b>" + (r.date === todayKey() ? '<span class="today-tag">Hoy</span>' : "") + "</span><small>" + s.counted +
+        " contados · faltan " + int(s.bad) + " · sobran " + int(s.info) + "</small></span></button>";
+    }).join("");
+    var rec = list.filter(function (r) { return r.date === state.histSel; })[0], st = recStats(rec);
+    var time = new Date(rec.savedAt).toLocaleTimeString("es-VE", { hour: "2-digit", minute: "2-digit" });
+    $("h-detail").innerHTML = '<div><h3 class="h-title">' + esc(fmtDate(rec.date)) + '</h3><p class="hint">Guardado a las ' + time + ". Solo lectura.</p></div>" +
+      '<div class="summary"><span>Contados ' + st.counted + "/" + rec.items.length + '</span><span class="s-ok">Ok ' + st.ok +
+      '</span><span class="s-bad">Faltan ' + int(st.bad) + '</span><span class="s-info">Sobran ' + int(st.info) +
+      '</span><span class="s-bad">Valor faltante ' + money(st.lost) + "</span></div>" +
+      '<div class="tablebox"><table><thead><tr><th>ID</th><th>Producto</th><th class="num">Teórico</th><th class="num">Conteo real</th><th>Diferencia</th></tr></thead><tbody>' +
+      rec.items.map(function (i) {
+        return '<tr><td class="id">' + esc(i.id) + "</td><td>" + esc(i.name) + '</td><td class="num">' + int(i.theoretical) + '</td><td class="num">' +
+          (i.counted === null || i.counted === undefined ? "—" : int(i.counted)) + "</td><td>" + diffCell(i.diff) + "</td></tr>";
+      }).join("") + "</tbody></table></div>";
+  }
+  $("h-list").addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-date]"); if (!b) return;
+    state.histSel = b.getAttribute("data-date"); renderHistory();
+  });
+  $("a-adjust").addEventListener("click", function () {
+    var n = 0, changes = 0;
+    state.products.forEach(function (p) { var r = diffInfo(p); if (r.d !== null) { n++; if (r.d !== 0) changes++; } });
+    $("a-confirm-msg").textContent = "Se actualizará el inventario teórico de " + changes + " producto(s) con el conteo real. " +
+      (n - changes) + " ya coinciden y no cambian.";
+    $("a-confirm").hidden = false;
+  });
+  $("a-no").addEventListener("click", function () { $("a-confirm").hidden = true; });
+  $("a-yes").addEventListener("click", function () {
+    var saved = $("a-save-too").checked;
+    if (saved) saveAudit();
+    var changed = 0;
+    state.products.forEach(function (p) {
+      var v = state.counts[p.id]; if (v === undefined) return;
+      if (parseInt(v, 10) !== p.stock) { p.stock = parseInt(v, 10); changed++; }
+    });
+    state.counts = {}; renderInventory(); renderAudit(); renderResults(); saveLocal();
+    toast(changed + " producto(s) ajustados al conteo real" + (saved ? " y conteo guardado" : ""));
+  });
+
+  /* ===== Exportación de reportes (CSV, Excel, PDF) ===== */
+  var exported = false;
+  var pad2 = function (n) { return String(n).padStart(2, "0"); };
+  var fmtMoney = function (v) { return (v < 0 ? "-" : "") + money(Math.abs(v)); };
+  function isoAdd(iso, days) {
+    var p = iso.split("-"), d = new Date(+p[0], +p[1] - 1, +p[2] + days);
+    return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+  }
+  function periodRange(kind) {
+    var t = todayKey(), f;
+    if (kind === "hoy") return { from: t, to: t, label: "Hoy (" + shortDate(t) + ")" };
+    if (kind === "semana") { f = isoAdd(t, -6); return { from: f, to: t, label: "Últimos 7 días (" + shortDate(f) + " al " + shortDate(t) + ")" }; }
+    if (kind === "mes") { f = t.slice(0, 8) + "01"; return { from: f, to: t, label: "Este mes (" + shortDate(f) + " al " + shortDate(t) + ")" }; }
+    return { all: true, label: "Todo el historial" };
+  }
+  function entryIso(l) {
+    if (l.d) return l.d;
+    var m = /^(\d\d)\/(\d\d)\/(\d{4})/.exec(l.date || "");
+    return m ? m[3] + "-" + m[2] + "-" + m[1] : "";
+  }
+  function reportData(kind) {
+    var r = periodRange(kind);
+    var inR = function (iso) { return r.all || (iso && iso >= r.from && iso <= r.to); };
+    return {
+      range: r,
+      audits: state.audits.filter(function (a) { return inR(a.date); }).slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; }),
+      entries: state.log.filter(function (l) { return inR(entryIso(l)); }).slice().reverse()
+    };
+  }
+  var CONTEO_HEAD = ["Fecha", "ID", "Producto", "Categoría", "Precio", "Inventario teórico", "Conteo físico", "Diferencia", "Estado", "Valor de la diferencia"];
+  var ENTRADA_HEAD = ["Fecha", "Hora", "Producto", "Cantidad"];
+  var ACTUAL_HEAD = ["ID", "Producto", "Categoría", "Stock actual", "Precio", "Valor en stock"];
+  function conteoRows(data) {
+    var rows = [];
+    data.audits.forEach(function (a) {
+      a.items.forEach(function (i) {
+        var c = (i.counted === null || i.counted === undefined) ? null : i.counted;
+        var d = c === null ? null : c - i.theoretical;
+        rows.push([shortDate(a.date), i.id, i.name, i.cat, i.price, i.theoretical, c, d,
+          d === null ? "Sin contar" : d === 0 ? "Ok" : d < 0 ? "Faltante" : "Sobrante", d === null ? null : d * i.price]);
+      });
+    });
+    return rows;
+  }
+  function entradaRows(data) {
+    return data.entries.map(function (l) { return [l.date || shortDate(entryIso(l)), l.time || "", l.name, l.qty]; });
+  }
+  function actualRows() {
+    return state.products.map(function (p) { return [p.id, p.name, p.cat, p.stock, p.price, p.stock * p.price]; });
+  }
+
+  /* CSV: separador «;» y números con coma decimal (formato de Excel en español) */
+  function csvCell(v) {
+    if (v === null || v === undefined) return "";
+    if (typeof v === "number") return String(v).replace(".", ",");
+    v = String(v);
+    if (/^[=+@-]/.test(v)) v = "'" + v;
+    return /[;"\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+  }
+  function buildCsv(head, rows) {
+    return "﻿" + [head].concat(rows).map(function (r) { return r.map(csvCell).join(";"); }).join("\r\n") + "\r\n";
+  }
+
+  /* Excel (.xlsx) escrito a mano: ZIP sin compresión + XML de hojas */
+  var CRC_T = (function () {
+    var t = [], c, n, k;
+    for (n = 0; n < 256; n++) { c = n; for (k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); t[n] = c >>> 0; }
+    return t;
+  })();
+  function crc32(b) {
+    var c = 0xFFFFFFFF, i;
+    for (i = 0; i < b.length; i++) c = CRC_T[(c ^ b[i]) & 255] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+  function concatBytes(list) {
+    var n = 0, o = 0, out;
+    list.forEach(function (a) { n += a.length; });
+    out = new Uint8Array(n);
+    list.forEach(function (a) { out.set(a, o); o += a.length; });
+    return out;
+  }
+  function zipStore(files) {
+    var enc = new TextEncoder(), parts = [], central = [], offset = 0;
+    var u16 = function (n) { return [n & 255, (n >>> 8) & 255]; };
+    var u32 = function (n) { return [n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255]; };
+    files.forEach(function (f) {
+      var name = enc.encode(f.name), crc = crc32(f.data), size = f.data.length;
+      var local = new Uint8Array([].concat(u32(0x04034b50), u16(20), u16(0x0800), u16(0), u16(0), u16(0x21), u32(crc), u32(size), u32(size), u16(name.length), u16(0)));
+      var cen = new Uint8Array([].concat(u32(0x02014b50), u16(20), u16(20), u16(0x0800), u16(0), u16(0), u16(0x21), u32(crc), u32(size), u32(size),
+        u16(name.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(offset)));
+      parts.push(local, name, f.data);
+      central.push(cen, name);
+      offset += local.length + name.length + size;
+    });
+    var cd = concatBytes(central);
+    var end = new Uint8Array([].concat(u32(0x06054b50), u16(0), u16(0), u16(files.length), u16(files.length), u32(cd.length), u32(offset), u16(0)));
+    return concatBytes(parts.concat([cd, end]));
+  }
+  function xmlEsc(s) {
+    return String(s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; });
+  }
+  function xlsxCol(n) {
+    var s = "", m;
+    n++;
+    while (n > 0) { m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
+    return s;
+  }
+  function sheetXml(sh) {
+    var x = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft"/></sheetView></sheetViews><cols>';
+    sh.widths.forEach(function (w, i) { x += '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w + '" customWidth="1"/>'; });
+    x += "</cols><sheetData>";
+    var all = [sh.head].concat(sh.rows);
+    all.forEach(function (row, r) {
+      x += '<row r="' + (r + 1) + '">';
+      row.forEach(function (v, c) {
+        if (v === null || v === undefined || v === "") return;
+        var ref = xlsxCol(c) + (r + 1);
+        if (r === 0) x += '<c r="' + ref + '" s="1" t="inlineStr"><is><t xml:space="preserve">' + xmlEsc(v) + "</t></is></c>";
+        else if (typeof v === "number" && isFinite(v)) x += '<c r="' + ref + '"' + (sh.money.indexOf(c) >= 0 ? ' s="2"' : "") + "><v>" + v + "</v></c>";
+        else x += '<c r="' + ref + '" t="inlineStr"><is><t xml:space="preserve">' + xmlEsc(v) + "</t></is></c>";
+      });
+      x += "</row>";
+    });
+    return x + "</sheetData></worksheet>";
+  }
+  function buildXlsx(data) {
+    var enc = new TextEncoder(), NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main", RNS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    var sheets = [
+      { name: "Conteos", head: CONTEO_HEAD, rows: conteoRows(data), widths: [12, 9, 30, 16, 11, 18, 15, 12, 12, 22], money: [4, 9] },
+      { name: "Entradas", head: ENTRADA_HEAD, rows: entradaRows(data), widths: [12, 10, 34, 10], money: [] },
+      { name: "Inventario actual", head: ACTUAL_HEAD, rows: actualRows(), widths: [9, 34, 16, 13, 11, 15], money: [4, 5] }
+    ];
+    var H = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+    var ct = H + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+      '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>';
+    sheets.forEach(function (s, i) { ct += '<Override PartName="/xl/worksheets/sheet' + (i + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'; });
+    ct += "</Types>";
+    var rels = H + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="' + RNS + '/officeDocument" Target="xl/workbook.xml"/></Relationships>';
+    var wb = H + '<workbook xmlns="' + NS + '" xmlns:r="' + RNS + '"><sheets>';
+    var wbRels = H + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
+    sheets.forEach(function (s, i) {
+      wb += '<sheet name="' + s.name + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>';
+      wbRels += '<Relationship Id="rId' + (i + 1) + '" Type="' + RNS + '/worksheet" Target="worksheets/sheet' + (i + 1) + '.xml"/>';
+    });
+    wb += "</sheets></workbook>";
+    wbRels += '<Relationship Id="rId' + (sheets.length + 1) + '" Type="' + RNS + '/styles" Target="styles.xml"/></Relationships>';
+    var styles = H + '<styleSheet xmlns="' + NS + '"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>' +
+      '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFDDE5F3"/><bgColor indexed="64"/></patternFill></fill></fills>' +
+      '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+      '<cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>' +
+      '<xf numFmtId="4" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+    var files = [
+      { name: "[Content_Types].xml", data: enc.encode(ct) }, { name: "_rels/.rels", data: enc.encode(rels) },
+      { name: "xl/workbook.xml", data: enc.encode(wb) }, { name: "xl/_rels/workbook.xml.rels", data: enc.encode(wbRels) },
+      { name: "xl/styles.xml", data: enc.encode(styles) }
+    ];
+    sheets.forEach(function (s, i) { files.push({ name: "xl/worksheets/sheet" + (i + 1) + ".xml", data: enc.encode(sheetXml(s)) }); });
+    return zipStore(files);
+  }
+
+  /* PDF escrito a mano: Helvetica estándar, A4 horizontal, tablas con salto de página */
+  var HW = { " ": 278, "!": 278, '"': 355, "#": 556, "$": 556, "%": 889, "&": 667, "'": 191, "(": 333, ")": 333, "*": 389, "+": 584, ",": 278, "-": 333, ".": 278, "/": 278,
+    ":": 278, ";": 278, "<": 584, "=": 584, ">": 584, "?": 556, "@": 1015, "[": 278, "\\": 278, "]": 278, "^": 469, "_": 556, "`": 333, "{": 334, "|": 260, "}": 334, "~": 584 };
+  "0123456789".split("").forEach(function (c) { HW[c] = 556; });
+  var UP = [667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611];
+  var LO = [556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500];
+  UP.forEach(function (w, i) { HW[String.fromCharCode(65 + i)] = w; });
+  LO.forEach(function (w, i) { HW[String.fromCharCode(97 + i)] = w; });
+  var ACC = { "á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u", "ü": "u", "ñ": "n", "Á": "A", "É": "E", "Í": "I", "Ó": "O", "Ú": "U", "Ñ": "N" };
+  function tw(s, size, bold) {
+    var w = 0, i, ch;
+    for (i = 0; i < s.length; i++) { ch = ACC[s[i]] || s[i]; w += HW[ch] || 556; }
+    return w * size / 1000 * (bold ? 1.07 : 1);
+  }
+  function pdfEnc(s) {
+    var map = { "–": "-", "—": "-", "‘": "'", "’": "'", "“": '"', "”": '"', "…": "..." };
+    return s.replace(/[–—‘’“”…]/g, function (c) { return map[c]; }).replace(/[^ -~ -ÿ]/g, "?");
+  }
+  function pdfStr(s) { return "(" + pdfEnc(s).replace(/([\\()])/g, "\\$1") + ")"; }
+  function fit(s, w, size, bold) {
+    s = String(s);
+    if (tw(s, size, bold) <= w) return s;
+    while (s.length > 1 && tw(s + "...", size, bold) > w) s = s.slice(0, -1);
+    return s + "...";
+  }
+  function buildPdf(data) {
+    var W = 842, H = 595, M = 36, ROW = 15, FS = 8.5, pages = [], cur, y;
+    var INK = "0.09 0.125 0.18", MUTED = "0.36 0.42 0.5", RED = "0.70 0.15 0.12", BLUE = "0.11 0.37 0.82", GREEN = "0.06 0.48 0.25";
+    function newPage() { cur = []; pages.push(cur); y = H - M; }
+    function txt(x, yy, s, size, bold, align, color) {
+      s = String(s);
+      var px = align === "r" ? x - tw(s, size, bold) : x;
+      cur.push("BT /" + (bold ? "F2" : "F1") + " " + size + " Tf " + color + " rg " + px.toFixed(2) + " " + yy.toFixed(2) + " Td " + pdfStr(s) + " Tj ET");
+    }
+    function rect(x, yy, w, h, rgb) { cur.push(rgb + " rg " + x.toFixed(2) + " " + yy.toFixed(2) + " " + w.toFixed(2) + " " + h.toFixed(2) + " re f"); }
+    function need(h) { if (y - h < M + 16) newPage(); }
+    function section(title) { need(60); y -= 8; txt(M, y - 11, title, 11, true, "l", INK); y -= 20; }
+    function note(s) { need(20); txt(M, y - 11, s, 9, false, "l", MUTED); y -= 18; }
+    function table(cols, rows, cell, color) {
+      function head() {
+        var x = M;
+        rect(M, y - ROW, W - 2 * M, ROW, "0.87 0.9 0.95");
+        cols.forEach(function (c) { txt(c.a === "r" ? x + c.w - 6 : x + 6, y - ROW + 4.5, c.h, FS, true, c.a, INK); x += c.w; });
+        y -= ROW;
+      }
+      need(ROW * 3); head();
+      rows.forEach(function (r, ri) {
+        var x = M;
+        if (y - ROW < M + 16) { newPage(); head(); }
+        if (ri % 2) rect(M, y - ROW, W - 2 * M, ROW, "0.965 0.97 0.98");
+        cols.forEach(function (c, ci) {
+          txt(c.a === "r" ? x + c.w - 6 : x + 6, y - ROW + 4.5, fit(cell(ci, r), c.w - 12, FS, false), FS, false, c.a, color(ci, r));
+          x += c.w;
+        });
+        y -= ROW;
+      });
+      y -= 4;
+    }
+    var st = { bad: 0, info: 0, lost: 0 }, now = new Date();
+    data.audits.forEach(function (a) { var s = recStats(a); st.bad += s.bad; st.info += s.info; st.lost += s.lost; });
+    newPage();
+    txt(M, y - 16, "Reporte de inventario", 18, true, "l", INK); y -= 26;
+    txt(M, y - 10, "Periodo: " + data.range.label, 10, false, "l", MUTED); y -= 14;
+    txt(M, y - 10, "Generado: " + shortDate(todayKey()) + " " + pad2(now.getHours()) + ":" + pad2(now.getMinutes()), 10, false, "l", MUTED); y -= 18;
+    txt(M, y - 10, "Conteos: " + data.audits.length + " día(s)    Faltantes: " + int(st.bad) + " u. (" + money(st.lost) + ")    Sobrantes: " + int(st.info) + " u.    Entradas: " + data.entries.length, 10, true, "l", INK);
+    y -= 14;
+
+    section("Conteos de auditoría");
+    var cr = conteoRows(data);
+    if (!cr.length) note("Sin conteos en este periodo.");
+    else table(
+      [{ h: "Fecha", w: 62 }, { h: "Producto", w: 210 }, { h: "Categoría", w: 100 }, { h: "Precio", w: 60, a: "r" }, { h: "Teórico", w: 70, a: "r" },
+        { h: "Conteo real", w: 70, a: "r" }, { h: "Diferencia", w: 70, a: "r" }, { h: "Estado", w: 60 }, { h: "Valor dif.", w: 68, a: "r" }],
+      cr,
+      function (ci, r) {
+        switch (ci) {
+          case 0: return r[0]; case 1: return r[2]; case 2: return r[3]; case 3: return money(r[4]); case 4: return int(r[5]);
+          case 5: return r[6] === null ? "-" : int(r[6]);
+          case 6: return r[7] === null ? "-" : (r[7] > 0 ? "+" : "") + r[7];
+          case 7: return r[8]; default: return r[9] === null ? "-" : fmtMoney(r[9]);
+        }
+      },
+      function (ci, r) {
+        if (ci === 6 || ci === 7 || ci === 8) return r[8] === "Faltante" ? RED : r[8] === "Sobrante" ? BLUE : r[8] === "Ok" ? GREEN : MUTED;
+        return INK;
+      });
+
+    section("Entradas de mercancía");
+    var er = entradaRows(data);
+    if (!er.length) note("Sin entradas en este periodo.");
+    else table([{ h: "Fecha", w: 90 }, { h: "Hora", w: 80 }, { h: "Producto", w: 450 }, { h: "Cantidad", w: 150, a: "r" }], er,
+      function (ci, r) { return ci === 3 ? "+" + int(r[3]) : r[ci]; }, function () { return INK; });
+
+    section("Inventario actual (al " + shortDate(todayKey()) + ")");
+    var ar = actualRows();
+    if (!ar.length) note("No hay productos registrados.");
+    else table([{ h: "ID", w: 80 }, { h: "Producto", w: 300 }, { h: "Categoría", w: 150 }, { h: "Stock", w: 80, a: "r" }, { h: "Precio", w: 80, a: "r" }, { h: "Valor", w: 80, a: "r" }], ar,
+      function (ci, r) { return ci === 3 ? int(r[3]) : ci === 4 ? money(r[4]) : ci === 5 ? money(r[5]) : r[ci]; }, function () { return INK; });
+
+    pages.forEach(function (p, i) {
+      cur = p;
+      txt(M, 20, "Control de Inventario", 8, false, "l", MUTED);
+      txt(W - M, 20, "Página " + (i + 1) + " de " + pages.length, 8, false, "r", MUTED);
+    });
+    var objs = [], kids = [];
+    objs[1] = "<< /Type /Catalog /Pages 2 0 R >>";
+    objs[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>";
+    objs[4] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>";
+    pages.forEach(function (p, i) {
+      var pid = 5 + 2 * i, content = p.join("\n");
+      kids.push(pid + " 0 R");
+      objs[pid] = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + W + " " + H + "] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents " + (pid + 1) + " 0 R >>";
+      objs[pid + 1] = "<< /Length " + content.length + " >>\nstream\n" + content + "\nendstream";
+    });
+    objs[2] = "<< /Type /Pages /Kids [" + kids.join(" ") + "] /Count " + pages.length + " >>";
+    var out = "%PDF-1.4\n", offs = [], n = objs.length - 1, i, xref;
+    for (i = 1; i <= n; i++) { offs[i] = out.length; out += i + " 0 obj\n" + objs[i] + "\nendobj\n"; }
+    xref = out.length;
+    out += "xref\n0 " + (n + 1) + "\n0000000000 65535 f \n";
+    for (i = 1; i <= n; i++) out += String(offs[i]).padStart(10, "0") + " 00000 n \n";
+    out += "trailer\n<< /Size " + (n + 1) + " /Root 1 0 R >>\nstartxref\n" + xref + "\n%%EOF";
+    var bytes = new Uint8Array(out.length);
+    for (i = 0; i < out.length; i++) bytes[i] = out.charCodeAt(i) & 255;
+    return bytes;
+  }
+
+  /* Descarga: usa el permiso de claude.ai si existe; si no, descarga normal del navegador */
+  async function saveFile(name, mime, bytes) {
+    var dl = null;
+    try { dl = window.claude && window.claude.use ? await window.claude.use("downloads") : null; } catch (x) { dl = null; }
+    if (dl) {
+      try { await dl.save({ filename: name, data: bytes }); return true; }
+      catch (e) {
+        if (e && e.code === "declined") return false;
+        if (!(e && e.code === "unavailable")) throw e;
+      }
+    }
+    var url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+    var a = document.createElement("a");
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+    return true;
+  }
+  async function doExport(fmt, kind) {
+    kind = kind || $("x-period").value;
+    var data = reportData(kind), bytes, mime, ext;
+    try {
+      if (fmt === "csv") { bytes = new TextEncoder().encode(buildCsv(CONTEO_HEAD, conteoRows(data))); mime = "text/csv;charset=utf-8"; ext = "csv"; }
+      else if (fmt === "xlsx") { bytes = buildXlsx(data); mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"; ext = "xlsx"; }
+      else { bytes = buildPdf(data); mime = "application/pdf"; ext = "pdf"; }
+      var ok = await saveFile("inventario-" + kind + "-" + todayKey() + "." + ext, mime, bytes);
+      if (ok) { exported = true; toast("Reporte " + ext.toUpperCase() + " generado"); updateResetPanel(); }
+      else toast("Descarga cancelada");
+    } catch (e) { toast("No se pudo generar el reporte."); }
+  }
+
+  /* Barra de exportación, aviso mensual y reinicio */
+  function renderHistTools() {
+    var d = reportData($("x-period").value), nC = d.audits.length, nE = d.entries.length, oldest = "";
+    $("x-info").textContent = d.range.label + ": " + nC + " conteo(s) guardado(s) y " + nE + " entrada(s) de mercancía.";
+    $("x-csv").disabled = nC === 0;
+    $("x-xlsx").disabled = $("x-pdf").disabled = (nC === 0 && nE === 0 && state.products.length === 0);
+    state.audits.forEach(function (a) { if (!oldest || a.date < oldest) oldest = a.date; });
+    state.log.forEach(function (l) { var i = entryIso(l); if (i && (!oldest || i < oldest)) oldest = i; });
+    var old = !!oldest && oldest.slice(0, 7) < todayKey().slice(0, 7);
+    $("h-banner").hidden = !old;
+    if (old) $("h-banner-msg").textContent = "Tienes registros desde " + oldest.slice(5, 7) + "/" + oldest.slice(0, 4) + ". Descarga el reporte y reinicia el historial para empezar el mes desde cero.";
+    updateResetPanel();
+  }
+  function updateResetPanel() {
+    var withProd = $("r-prod").checked;
+    $("r-count").textContent = state.audits.length + " conteo(s) guardado(s), " + state.log.length + " entrada(s) de mercancía y los conteos en curso" +
+      (withProd ? ", además de " + state.products.length + " producto(s) con su stock" : "");
+    $("r-warn").textContent = exported ? "" : "Aún no has descargado ningún reporte en esta sesión.";
+    $("r-last").textContent = state.lastReset ? "Último reinicio: " + shortDate(state.lastReset) + "." : "El historial no se ha reiniciado todavía.";
+  }
+  function openReset() { $("r-panel").hidden = false; updateResetPanel(); $("r-panel").scrollIntoView({ block: "nearest", behavior: "smooth" }); }
+  function closeReset() { $("r-panel").hidden = true; $("r-word").value = ""; $("r-go").disabled = true; $("r-prod").checked = false; updateResetPanel(); }
+  $("x-period").addEventListener("change", renderHistTools);
+  $("x-csv").addEventListener("click", function () { doExport("csv"); });
+  $("x-xlsx").addEventListener("click", function () { doExport("xlsx"); });
+  $("x-pdf").addEventListener("click", function () { doExport("pdf"); });
+  $("r-open").addEventListener("click", openReset);
+  $("h-banner-go").addEventListener("click", openReset);
+  $("r-cancel").addEventListener("click", closeReset);
+  $("r-prod").addEventListener("change", updateResetPanel);
+  $("r-backup").addEventListener("click", function () { doExport("xlsx", "todo"); });
+  $("r-word").addEventListener("input", function () { $("r-go").disabled = $("r-word").value.trim().toUpperCase() !== "REINICIAR"; });
+  $("r-go").addEventListener("click", function () {
+    if ($("r-word").value.trim().toUpperCase() !== "REINICIAR") return;
+    var withProd = $("r-prod").checked;
+    state.audits = []; state.log = []; state.counts = {}; state.histSel = null; state.selected = null;
+    if (withProd) state.products = [];
+    state.lastReset = todayKey(); exported = false;
+    closeReset(); refreshAll(); renderLog(); renderHistory();
+    toast(withProd ? "Todo reiniciado: sin productos ni historial" : "Historial reiniciado. Los productos y su stock se conservan");
+  });
+
+  /* Inicio: se lee localStorage; si está vacío, la app arranca limpia (sin productos ni historial). */
+  loadLocal();
+  state.loaded = true;
+  applyTheme(getTheme());
+  renderSaveState();
+  refreshAll(true); renderLog(); renderHistory();
+  var h = (location.hash || "").replace("#", ""); if (tabs.indexOf(h) >= 0) showTab(h);
+
+  /* Si la app está abierta en otra pestaña, recoge sus cambios en vez de pisarlos. */
+  window.addEventListener("storage", function (e) {
+    if (e.key === LS_KEY && loadLocal()) { refreshAll(true); renderLog(); renderHistory(); }
+    if (e.key === THEME_KEY) applyTheme(getTheme());
+  });
+})();
+</script>
+
+</html>
