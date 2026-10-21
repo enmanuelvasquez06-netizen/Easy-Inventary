@@ -1,4 +1,8 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Control de Inventario</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
@@ -37,8 +41,9 @@
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body {
-  background: var(--bg); color: var(--fg); font-family: var(--font-ui); font-size: 15px; line-height: 1.5;
+  margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-ui); font-size: 15px; line-height: 1.5;
   padding-block: 20px 48px;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
@@ -158,6 +163,7 @@ td.id { font-family: var(--font-num); color: var(--muted); font-size: 0.85rem; }
       <div class="kpi"><span>Unidades</span><b id="k-units">0</b></div>
       <div class="kpi"><span>Valor</span><b id="k-val">$0</b></div>
     </div>
+    <button class="btn sm" id="theme-btn" type="button" aria-label="Cambiar tema de color"></button>
   </header>
 
   <nav role="tablist" aria-label="Secciones">
@@ -212,7 +218,7 @@ td.id { font-family: var(--font-num); color: var(--muted); font-size: 0.85rem; }
       </div>
     </div>
     <div>
-      <h2 style="font-size:0.95rem;margin-bottom:8px">Entradas de esta sesión</h2>
+      <h2 style="font-size:0.95rem;margin-bottom:8px">Últimas entradas de mercancía</h2>
       <ul class="log" id="s-log"><li><span style="color:var(--muted)">Aún no se han cargado entradas.</span><span></span></li></ul>
     </div>
   </section>
@@ -260,7 +266,7 @@ td.id { font-family: var(--font-num); color: var(--muted); font-size: 0.85rem; }
 <script>
 (function () {
   var state = {
-    products: [], loaded: false, db: null, deleting: null,
+    products: [], loaded: false, deleting: null,
     counts: {}, selected: null, log: [], audits: [], histSel: null
   };
   var $ = function (id) { return document.getElementById(id); };
@@ -269,29 +275,64 @@ td.id { font-family: var(--font-num); color: var(--muted); font-size: 0.85rem; }
   var int = function (n) { return n.toLocaleString("es-VE"); };
   var byId = function (id) { return state.products.filter(function (p) { return p.id === id; })[0]; };
 
-  /* Guardado en la nube (capacidad db). Sin db la app funciona solo en memoria. */
-  function persistErr(e) { toast("No se pudo guardar el cambio" + (e && e.code ? " (" + e.code + ")" : "") + "."); }
-  function dbSet(p) {
-    if (!state.db) return Promise.resolve();
-    return state.db.collection("products").doc(p.id).set({ n: p.n, name: p.name, cat: p.cat, stock: p.stock, price: p.price }).catch(persistErr);
+  /* Guardado local: todo vive en el localStorage de este navegador. */
+  var LS_KEY = "inventario-app-v1";
+  var lsOk = true;
+  function saveLocal() {
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify({ v: 1, products: state.products, counts: state.counts, log: state.log.slice(0, 50), audits: state.audits }));
+      if (!lsOk) { lsOk = true; renderSaveState(); }
+    } catch (x) { if (lsOk) { lsOk = false; renderSaveState(); } }
   }
-  function dbStock(p) {
-    if (!state.db) return Promise.resolve();
-    return state.db.collection("products").doc(p.id).update({ stock: p.stock }).catch(persistErr);
+  function loadLocal() {
+    try {
+      var raw = localStorage.getItem(LS_KEY); if (!raw) return false;
+      var d = JSON.parse(raw);
+      if (!d || !Array.isArray(d.products)) return false;
+      state.products = d.products;
+      state.counts = d.counts && typeof d.counts === "object" ? d.counts : {};
+      state.log = Array.isArray(d.log) ? d.log : [];
+      state.audits = Array.isArray(d.audits) ? d.audits : [];
+      state.loaded = true;
+      return true;
+    } catch (x) { return false; }
   }
-  function dbDel(id) {
-    if (!state.db) return Promise.resolve();
-    return state.db.collection("products").doc(id).delete().catch(persistErr);
+  function renderLog() {
+    $("s-log").innerHTML = state.log.length ? state.log.slice(0, 8).map(function (l) {
+      return "<li><span>" + esc(l.name) + ' <span style="color:var(--muted)">· ' + (l.date ? esc(l.date) + " " : "") + esc(l.time) + "</span></span><span>+" + int(l.qty) + "</span></li>";
+    }).join("") : '<li><span style="color:var(--muted)">Aún no se han cargado entradas.</span><span></span></li>';
   }
-  function setSave(on) {
-    $("save-state").textContent = on ? "Los cambios se guardan automáticamente."
-      : "Sin guardado: inicia sesión en claude.ai para conservar los datos.";
+  function renderSaveState() {
+    $("save-state").textContent = lsOk ? "Los cambios se guardan automáticamente en este dispositivo."
+      : "Este navegador bloquea el guardado: los cambios se perderán al cerrar la página.";
   }
-  function refreshAll() {
+
+  /* Tema: automático (sigue al sistema), claro u oscuro */
+  var THEME_KEY = "inventario-tema";
+  var THEMES = ["auto", "light", "dark"];
+  var THEME_LABEL = { auto: "Tema: automático", light: "Tema: claro", dark: "Tema: oscuro" };
+  var hostTheme = document.documentElement.getAttribute("data-theme");
+  function getTheme() {
+    try { var t = localStorage.getItem(THEME_KEY); return THEMES.indexOf(t) >= 0 ? t : "auto"; } catch (x) { return "auto"; }
+  }
+  function applyTheme(t) {
+    var r = document.documentElement;
+    if (t === "auto") { if (hostTheme) r.setAttribute("data-theme", hostTheme); else r.removeAttribute("data-theme"); }
+    else r.setAttribute("data-theme", t);
+    $("theme-btn").textContent = THEME_LABEL[t];
+  }
+  $("theme-btn").addEventListener("click", function () {
+    var t = THEMES[(THEMES.indexOf(getTheme()) + 1) % THEMES.length];
+    try { localStorage.setItem(THEME_KEY, t); } catch (x) {}
+    applyTheme(t);
+  });
+
+  function refreshAll(noSave) {
     if (state.selected && !byId(state.selected)) state.selected = null;
     if (state.deleting && !byId(state.deleting)) state.deleting = null;
     Object.keys(state.counts).forEach(function (id) { if (!byId(id)) delete state.counts[id]; });
     renderInventory(); renderResults(); renderAudit();
+    if (!noSave) saveLocal();
   }
 
   /* Pestañas */
@@ -354,9 +395,8 @@ td.id { font-family: var(--font-num); color: var(--muted); font-size: 0.85rem; }
     var p = byId(id); if (!p) return;
     state.products = state.products.filter(function (x) { return x.id !== id; });
     state.deleting = null; refreshAll(); toast(p.name + " eliminado");
-    dbDel(id);
   });
-  $("add-form").addEventListener("submit", async function (e) {
+  $("add-form").addEventListener("submit", function (e) {
     e.preventDefault();
     var name = $("n-name").value.trim(), cat = $("n-cat").value.trim() || "General";
     var stock = parseInt($("n-stock").value, 10), price = parseFloat($("n-price").value);
@@ -368,22 +408,11 @@ td.id { font-family: var(--font-num); color: var(--muted); font-size: 0.85rem; }
     $("add-err").textContent = err; if (err) return;
     var form = $("add-form");
     var n = state.products.reduce(function (m, p) { return Math.max(m, p.n || 0); }, 0) + 1;
-    if (state.db) {
-      try {
-        var m = await state.db.doc("meta/counter").get();
-        var nx = m.exists ? Number(m.data().next) : 0;
-        if (nx > n) n = nx;
-      } catch (x) {}
-    }
     var id = "P-" + String(n).padStart(3, "0");
     var np = { id: id, n: n, name: name, cat: cat, stock: stock, price: price };
     state.products.push(np);
     form.reset(); $("n-stock").value = 0; form.hidden = true;
     refreshAll(); toast("Producto " + id + " agregado");
-    if (state.db) {
-      await dbSet(np);
-      try { await state.db.doc("meta/counter").set({ next: n + 1 }); } catch (x) {}
-    }
   });
 
   /* Mercancía nueva */
@@ -414,13 +443,11 @@ td.id { font-family: var(--font-num); color: var(--muted); font-size: 0.85rem; }
     else if (isNaN(q) || q < 1) err = "Escribe una cantidad mayor que 0.";
     $("s-err").textContent = err; if (err) return;
     p.stock += q;
-    state.log.unshift({ name: p.name, qty: q, time: new Date().toLocaleTimeString("es-VE", { hour: "2-digit", minute: "2-digit" }) });
-    $("s-log").innerHTML = state.log.slice(0, 8).map(function (l) {
-      return "<li><span>" + esc(l.name) + ' <span style="color:var(--muted)">· ' + l.time + "</span></span><span>+" + int(l.qty) + "</span></li>";
-    }).join("");
+    state.log.unshift({ name: p.name, qty: q, date: shortDate(todayKey()), time: new Date().toLocaleTimeString("es-VE", { hour: "2-digit", minute: "2-digit" }) });
+    if (state.log.length > 50) state.log.length = 50;
+    renderLog(); saveLocal();
     $("s-qty").value = ""; renderInventory(); renderResults(); renderAudit();
     toast("+" + int(q) + " unidades a " + p.name);
-    dbStock(p);
   });
 
   /* Auditoría */
@@ -459,11 +486,12 @@ td.id { font-family: var(--font-num); color: var(--muted); font-size: 0.85rem; }
     var el = e.target; if (!el.classList.contains("count-in")) return;
     var id = el.getAttribute("data-id"), val = el.value.trim();
     if (val === "" || isNaN(parseInt(val, 10)) || parseInt(val, 10) < 0) delete state.counts[id]; else state.counts[id] = String(parseInt(val, 10));
+    saveLocal();
     var p = byId(id), r = diffInfo(p), d = $("d-" + id);
     d.className = "diff " + r.cls; d.textContent = r.txt;
     renderSummary(); $("a-confirm").hidden = true;
   });
-  $("a-clear").addEventListener("click", function () { state.counts = {}; renderAudit(); });
+  $("a-clear").addEventListener("click", function () { state.counts = {}; renderAudit(); saveLocal(); });
 
   /* Registro diario de conteos */
   function todayKey() {
@@ -489,14 +517,12 @@ td.id { font-family: var(--font-num); color: var(--muted); font-size: 0.85rem; }
     state.audits = [rec].concat(state.audits.filter(function (a) { return a.date !== rec.date; }))
       .sort(function (a, b) { return a.date < b.date ? 1 : -1; });
     state.histSel = rec.date;
-    renderSummary(); renderHistory();
-    if (state.db) return state.db.collection("audits").doc(rec.date).set(rec).catch(persistErr);
-    return Promise.resolve();
+    renderSummary(); renderHistory(); saveLocal();
   }
-  $("a-save").addEventListener("click", async function () {
+  $("a-save").addEventListener("click", function () {
     var existed = state.audits.some(function (r) { return r.date === todayKey(); });
     toast(existed ? "Registro de hoy actualizado" : "Conteo de hoy guardado en el historial");
-    await saveAudit();
+    saveAudit();
   });
   function recStats(rec) {
     var s = { counted: 0, ok: 0, bad: 0, info: 0, lost: 0 };
@@ -552,50 +578,57 @@ td.id { font-family: var(--font-num); color: var(--muted); font-size: 0.85rem; }
     $("a-confirm").hidden = false;
   });
   $("a-no").addEventListener("click", function () { $("a-confirm").hidden = true; });
-  $("a-yes").addEventListener("click", async function () {
-    var saveP = $("a-save-too").checked ? saveAudit() : null;
-    var changed = [];
+  $("a-yes").addEventListener("click", function () {
+    var saved = $("a-save-too").checked;
+    if (saved) saveAudit();
+    var changed = 0;
     state.products.forEach(function (p) {
       var v = state.counts[p.id]; if (v === undefined) return;
-      if (parseInt(v, 10) !== p.stock) { p.stock = parseInt(v, 10); changed.push(p); }
+      if (parseInt(v, 10) !== p.stock) { p.stock = parseInt(v, 10); changed++; }
     });
-    state.counts = {}; renderInventory(); renderAudit(); renderResults();
-    toast(changed.length + " producto(s) ajustados al conteo real" + (saveP ? " y conteo guardado" : ""));
-    if (saveP) await saveP;
-    for (var i = 0; i < changed.length; i++) await dbStock(changed[i]);
+    state.counts = {}; renderInventory(); renderAudit(); renderResults(); saveLocal();
+    toast(changed + " producto(s) ajustados al conteo real" + (saved ? " y conteo guardado" : ""));
   });
 
-  renderInventory(); renderResults(); renderAudit();
+  /* Datos iniciales: solo se usan cuando localStorage está vacío (primera vez). */
+  var SEED = {
+    products: [
+      { id: "P-001", n: 1, name: "Aceite de oliva 1L", cat: "Despensa", stock: 10, price: 8.5 },
+      { id: "P-002", n: 2, name: "Harina de maíz 1kg", cat: "Despensa", stock: 15, price: 1.8 },
+      { id: "P-003", n: 3, name: "Detergente líquido 2L", cat: "Limpieza", stock: 3, price: 6.2 },
+      { id: "P-004", n: 4, name: "Café molido 500g", cat: "Bebidas", stock: 7, price: 5.4 },
+      { id: "P-005", n: 5, name: "Sal", cat: "Despensa", stock: 30, price: 10 },
+      { id: "P-006", n: 6, name: "Leche", cat: "Bebidas", stock: 10, price: 2.99 }
+    ],
+    audits: [{
+      date: "2026-10-20", savedAt: "2026-10-20T19:09:31.481Z",
+      items: [
+        { id: "P-001", name: "Aceite de oliva 1L", cat: "Despensa", price: 8.5, theoretical: 34, counted: 10, diff: -24 },
+        { id: "P-002", name: "Harina de maíz 1kg", cat: "Despensa", price: 1.8, theoretical: 43, counted: 15, diff: -28 },
+        { id: "P-003", name: "Detergente líquido 2L", cat: "Limpieza", price: 6.2, theoretical: 9, counted: 3, diff: -6 },
+        { id: "P-004", name: "Café molido 500g", cat: "Bebidas", price: 5.4, theoretical: 20, counted: 7, diff: -13 },
+        { id: "P-005", name: "Sal", cat: "Despensa", price: 10, theoretical: 25, counted: 30, diff: 5 },
+        { id: "P-006", name: "Leche", cat: "Bebidas", price: 2.99, theoretical: 5, counted: 10, diff: 5 }
+      ]
+    }]
+  };
+
+  /* Inicio: primero se lee localStorage; solo si no hay nada se carga SEED. */
+  if (!loadLocal()) {
+    state.products = SEED.products; state.audits = SEED.audits; state.loaded = true;
+    saveLocal();
+  }
+  applyTheme(getTheme());
+  renderSaveState();
+  refreshAll(true); renderLog(); renderHistory();
   var h = (location.hash || "").replace("#", ""); if (tabs.indexOf(h) >= 0) showTab(h);
 
-  /* Conexión al almacén de datos */
-  (async function () {
-    var db = null;
-    try { db = window.claude && window.claude.use ? await window.claude.use("db") : null; } catch (x) { db = null; }
-    if (!db) {
-      state.products = [
-        { id: "P-001", n: 1, name: "Aceite de oliva 1L", cat: "Despensa", stock: 24, price: 8.5 },
-        { id: "P-002", n: 2, name: "Harina de maíz 1kg", cat: "Despensa", stock: 60, price: 1.8 }
-      ];
-      state.loaded = true; setSave(false); refreshAll(); return;
-    }
-    state.db = db; setSave(true);
-    db.collection("products").orderBy("n").onSnapshot(function (snap) {
-      state.products = snap.docs.map(function (d) {
-        var v = d.data() || {};
-        return { id: d.id, n: Number(v.n) || 0, name: String(v.name || d.id), cat: String(v.cat || "General"), stock: Number(v.stock) || 0, price: Number(v.price) || 0 };
-      });
-      state.loaded = true; refreshAll();
-    }, function () {
-      state.db = null; state.loaded = true; setSave(false); refreshAll();
-    });
-    db.collection("audits").orderBy("date", "desc").onSnapshot(function (snap) {
-      state.audits = snap.docs.map(function (d) { return d.data(); })
-        .filter(function (r) { return r && r.date && Array.isArray(r.items); });
-      renderSummary(); renderHistory();
-    }, function () {});
-  })();
+  /* Si la app está abierta en otra pestaña, recoge sus cambios en vez de pisarlos. */
+  window.addEventListener("storage", function (e) {
+    if (e.key === LS_KEY && loadLocal()) { refreshAll(true); renderLog(); renderHistory(); }
+    if (e.key === THEME_KEY) applyTheme(getTheme());
+  });
 })();
 </script>
 
-</body></html>
+</html>
